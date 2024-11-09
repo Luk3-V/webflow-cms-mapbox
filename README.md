@@ -1,4 +1,4 @@
-Update version of Casey's solution:
+This is an updated version of Casey's Webflow CMS Mapbox integration:
 
 https://www.youtube.com/watch?v=GrTAAXm8nik
 
