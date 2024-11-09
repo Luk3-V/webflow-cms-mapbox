@@ -1,9 +1,15 @@
-//This script correlates everything based on the city name in the CMS. The location ID is based on this city name, which means the city name needs to be unique. It cannot be a duplicate. If you find it is being duplicated, can use another selector that will not be duplicated in the future.
+// This script correlates everything based on the name in the CMS.
+// The location ID is based on this name, which means the name needs to be unique. It cannot be a duplicate. If you find it is being duplicated, can use another selector that will not be duplicated in the future.
 
 window.Webflow ||= [];
 window.Webflow.push(() => {
   //////////////////////////////////////////////////////////////
   /////////////////////// VARIABLES ////////////////////////////
+
+  const tagFilterItem = document.querySelectorAll(
+    "[tag-filter-item] input"
+  );
+  let filteredTagIds = [];
 
   // Variables for the map card wrapper, items, and close buttons
   const locationMapCardWrapper = document.querySelector(
@@ -20,6 +26,12 @@ window.Webflow.push(() => {
   const locationItemSidebar = document.querySelectorAll(
     "[location-item-sidebar]"
   );
+  // Filtered locations updated by checkboxes & used for sidebar, dots, & search after inital load.
+  let filteredLocations = locationItemSidebar;
+
+  let currentSearchResult = null;
+  let currentSearchName = "";
+
   const popUps = document.getElementsByClassName("mapboxgl-popup");
 
   // Remove the 'is--show' class from the map card wrapper
@@ -35,9 +47,9 @@ window.Webflow.push(() => {
   // Initialize the Mapbox map within the element with id 'map'
   const map = new mapboxgl.Map({
     container: "map", // The id of the HTML element to initialize the map in
-    style: "YOUR MAPBOX STYLE", // The Mapbox style to use
-    center: [-97.022553, 32.771663], // Initial center coordinates [longitude, latitude]
-    zoom: 10.25, // Initial zoom level
+    //style: "YOUR MAPBOX STYLE", // The Mapbox style to use
+    center: [-120.8117841, 37.1428699], // Initial center coordinates [longitude, latitude]
+    zoom: 5, // Initial zoom level
   });
 
   // Adjust the zoom level of the map based on the screen size
@@ -46,40 +58,36 @@ window.Webflow.push(() => {
     map.setZoom(8); // Set map zoom level for mobile size
   }
 
-  //////////////////////////////////////////////////////////////
-  /////////// SORT LIST BASED ON CITY NAME USING ATTRIBUTE /////
+  ///////////////////////////////////////////////////////////////////////
+  ///////// Helper functions to update result & filter count ////////////
 
-  /* NOTE: THIS IS A FALL BACK. YOU CAN COMMENT OUT IF YOU DO THE FOLLOWING: IF you use Webflow to sort, you have to sort both the sidebar list and the card list. If you sort one by city name A-Z and not the other, the correct data-attribute that correlates the two lists will not be added and there will be a mismatch.*/
+  const updateResultCount = function () {
+    const count = filteredLocations.length;
 
-  // Sort the NodeList of location items based on the 'location-name-sidebar' attribute
-  const sortedLocations = Array.from(locationItemSidebar).sort((a, b) => {
-    const nameA = a
-      .querySelector("[location-name-sidebar]")
-      .textContent.trim()
-      .toUpperCase();
-    const nameB = b
-      .querySelector("[location-name-sidebar]")
-      .textContent.trim()
-      .toUpperCase();
-    return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
-  });
+    const resultCountElement = document.querySelectorAll("[result-count]");
+    resultCountElement.forEach((el) => (el.textContent = count));
+  };
+  updateResultCount();
 
-  // Select the parent element with the attribute location-list-sidebar and remove all existing children
-  const parentElement = document.querySelector("[location-list-sidebar]");
-  while (parentElement.firstChild) {
-    parentElement.removeChild(parentElement.firstChild);
-  }
+  const updateFilterCount = function () {
+    const count = filteredTagIds.length;
 
-  // Reorder the HTML elements based on the sorted order
-  sortedLocations.forEach((location) => {
-    parentElement.appendChild(location); // This moves the element to the end of the parent, effectively reordering them
-  });
+    const filterTitleElement = document.querySelectorAll("[filter-title]");
+    if (count > 0)
+      filterTitleElement.forEach(
+        (el) => (el.textContent = "Filter (" + count + ")")
+      );
+    else
+      filterTitleElement.forEach(
+        (el) => (el.textContent = "Filter")
+      );
+  };
 
   //////////////////////////////////////////////////////////////
   /////////////////// CREATE GEOJSON DATA //////////////////////
 
-  // Create an empty GeoJSON object to store location data
-  let stores = {
+  // Create an empty GeoJSON object to dot location data
+  let dots = {
     type: "FeatureCollection",
     features: [],
   };
@@ -87,7 +95,7 @@ window.Webflow.push(() => {
   // Get the list of location elements from the HTML and convert each to GeoJSON
   const listLocations = locationItemSidebar;
 
-  // Function to convert each location element into GeoJSON and add to stores object
+  // Function to convert each location element into GeoJSON and add to dots object
   const getGeoData = function () {
     // Loop through each location in the list
     listLocations.forEach(function (location) {
@@ -110,7 +118,7 @@ window.Webflow.push(() => {
       ).textContent;
 
       // Get the location info for popup content on the map (using the location name)
-      const locationCity = location.querySelector(
+      const locationName = location.querySelector(
         "[location-name-sidebar]"
       ).textContent;
 
@@ -123,21 +131,21 @@ window.Webflow.push(() => {
         },
         properties: {
           id: locationID,
-          city: locationCity, // information used in the popup on the map
+          name: locationName, // information used in the popup on the map
         },
       };
 
-      // Add the feature to the stores object if it's not already included
-      if (!stores.features.includes(geoData)) {
-        stores.features.push(geoData);
+      // Add the feature to the dots object if it's not already included
+      if (!dots.features.includes(geoData)) {
+        dots.features.push(geoData);
       }
 
       // Set the data-id attribute on the location element for later reference in sidebar click events
       location.setAttribute("data-id", locationID);
     });
 
-    // Log the stores object to the console for debugging
-    console.log(stores);
+    // Log the dots object to the console for debugging
+    console.log(dots);
   };
 
   // Call getGeoData function to turn Webflow CMS items into GeoJSON Data for Mapbox to use
@@ -152,6 +160,22 @@ window.Webflow.push(() => {
 
     // Set the data-id attribute on the map card item using the location ID
     el.setAttribute("data-id", locationID);
+
+    // Set google maps link
+    const longitude = el
+      .querySelector("[location-longitude-sidebar]")
+      .textContent.trim();
+    const latitude = el
+      .querySelector("[location-latitude-sidebar]")
+      .textContent.trim();
+    const locationDirectionsLink = el.querySelector("[location-directions]");
+    locationDirectionsLink.href =
+      "https://www.google.com/maps/place/" +
+      locationDirectionsLink.textContent.trim() +
+      "/@" +
+      longitude +
+      "," +
+      latitude;
   });
 
   //////////////////////////////////////////////////////////////
@@ -159,19 +183,21 @@ window.Webflow.push(() => {
 
   // Function to add the GeoJSON data as a layer to the map
   const addMapPoints = function () {
+    map.addSource("locations", {
+      type: "geojson",
+      data: dots, // Uses GeoJSON data from the dots object
+    });
+
     map.addLayer({
-      id: "locations", // Layer id
+      id: "location-dots", // Layer id
       type: "circle", // Layer type (circle for point features)
-      source: {
-        type: "geojson", // Source type
-        data: stores, // Uses GeoJSON data from the stores object
-      },
+      source: "locations",
       paint: {
-        "circle-radius": 8, // Circle radius
-        "circle-stroke-width": 1, // Circle stroke width
-        "circle-color": "#EB2D2E", // Circle fill color
+        "circle-radius": 10, // Circle radius
+        "circle-stroke-width": 2, // Circle stroke width
+        "circle-color": "#fe0000", // Circle fill color
         "circle-opacity": 1, // Circle opacity
-        "circle-stroke-color": "#CB1F10", // Circle stroke color
+        "circle-stroke-color": "#fff", // Circle stroke color
       },
     });
   };
@@ -179,11 +205,12 @@ window.Webflow.push(() => {
   /////////////////////////////////////////////////////////////////////////////
   /////// Helper function to calculate distances and update the DOM //////////
 
-  const calculateDistancesAndUpdateDOM = (referencePoint) => {
+  const calculateDistancesAndUpdateDOM = () => {
+    const referencePoint = currentSearchResult;
     const options = { units: "miles" }; // Set the units for distance calculation to miles
 
     // Loop through each location in the list
-    listLocations.forEach((location) => {
+    filteredLocations.forEach((location) => {
       // Get the latitude from the element and trim any whitespace
       const locationLat = location
         .querySelector("[location-latitude-sidebar]")
@@ -214,15 +241,32 @@ window.Webflow.push(() => {
       );
       if (!distanceElement) {
         distanceElement = document.createElement("div"); // Create a new div element if it doesn't exist
-        distanceElement.className = "location-distance_sidebar"; // Set the class name of the div
+        distanceElement.className = "location_distance"; // Set the class name of the div
         location.appendChild(distanceElement); // Append the div to the location element
       }
-      // Set the text content of the div to the calculated distance in miles
-      distanceElement.textContent = `${distance.toFixed(2)} miles`;
+
+      // Find or create a card distance element to display the distance
+      let cardElement = locationMapCardWrapper.querySelector(
+        "[data-id='" + location.getAttribute("data-id") + "']"
+      );
+      let cardDistanceElement = cardElement.querySelector(
+        "[location-distance-sidebar]"
+      );
+      if (!cardDistanceElement) {
+        cardDistanceElement = document.createElement("div"); // Create a new div element if it doesn't exist
+        cardDistanceElement.className = "location_distance"; // Set the class name of the div
+        cardElement.appendChild(cardDistanceElement); // Append the div to the location element
+      }
+
+      // Display & set the text content of the div to the calculated distance in miles
+      distanceElement.style.display = "block";
+      distanceElement.textContent = `${distance.toFixed(2)} miles away`;
+      cardDistanceElement.style.display = "block";
+      cardDistanceElement.textContent = `${distance.toFixed(2)} miles away`;
     });
 
     // Sort the locations based on the distance attribute
-    const sortedLocations = Array.from(listLocations).sort((a, b) => {
+    const sortedLocations = Array.from(filteredLocations).sort((a, b) => {
       return (
         parseFloat(a.getAttribute("data-distance")) -
         parseFloat(b.getAttribute("data-distance"))
@@ -239,6 +283,78 @@ window.Webflow.push(() => {
     sortedLocations.forEach((location) => {
       parentElement.appendChild(location); // Append the location to the parent element
     });
+
+    // Display "sorted by" text
+    const sortedTextElement = document.querySelectorAll("[sorted-text]");
+    const sortedLocationElement =
+      document.querySelectorAll("[sorted-location]");
+    sortedTextElement.forEach((el) => (el.style.display = "block"));
+    sortedLocationElement.forEach((el) => (el.textContent = currentSearchName));
+
+    // Return the sorted locations
+    return sortedLocations;
+  };
+
+  const clearDistancesAndUpdateDOM = () => {
+    currentSearchResult = null;
+
+    // Loop through each location in the list
+    filteredLocations.forEach((location) => {
+      location.setAttribute("data-distance", "");
+
+      // Find sidebar item distance element
+      let distanceElement = location.querySelector(
+        "[location-distance-sidebar]"
+      );
+
+      // Find card distance element
+      let cardElement = locationMapCardWrapper.querySelector(
+        "[data-id='" + location.getAttribute("data-id") + "']"
+      );
+      let cardDistanceElement = cardElement.querySelector(
+        "[location-distance-sidebar]"
+      );
+
+      // Display & set the text content of the div to the calculated distance in miles
+      if (distanceElement) {
+        distanceElement.textContent = "";
+        distanceElement.style.display = "none";
+      }
+      if (cardDistanceElement) {
+        cardDistanceElement.textContent = "";
+        cardDistanceElement.style.display = "none";
+      }
+    });
+
+    // Sort the locations based on alphabetical names
+    const sortedLocations = Array.from(filteredLocations).sort((a, b) => {
+      const nameA = a
+        .querySelector("[location-name-sidebar]")
+        .textContent.trim();
+      const nameB = b
+        .querySelector("[location-name-sidebar]")
+        .textContent.trim();
+
+      return nameA.localeCompare(nameB);
+    });
+
+    // Select the parent element with the attribute location-list-sidebar and remove all existing children
+    const parentElement = document.querySelector("[location-list-sidebar]");
+    while (parentElement.firstChild) {
+      parentElement.removeChild(parentElement.firstChild);
+    }
+
+    // Reorder the HTML elements based on the sorted order
+    sortedLocations.forEach((location) => {
+      parentElement.appendChild(location); // Append the location to the parent element
+    });
+
+    // Remove "sorted by" text
+    const sortedTextElement = document.querySelectorAll("[sorted-text]");
+    const sortedLocationElement =
+      document.querySelectorAll("[sorted-location]");
+    sortedLocationElement.forEach((el) => (el.textContent = ""));
+    sortedTextElement.forEach((el) => (el.style.display = "none"));
 
     // Return the sorted locations
     return sortedLocations;
@@ -260,7 +376,7 @@ window.Webflow.push(() => {
       const ID = closestLocation.getAttribute("data-id");
 
       // Find the feature in the GeoJSON data that matches the closest location ID
-      const feature = stores.features.find(
+      const feature = dots.features.find(
         (feature) => feature.properties.id === ID
       );
 
@@ -268,14 +384,14 @@ window.Webflow.push(() => {
       if (feature) {
         // Extract the coordinates and city of the feature
         const coordinates = feature.geometry.coordinates;
-        const city = feature.properties.city;
+        const name = feature.properties.name;
 
         // Create a mock event object to pass to the addPopup function
         const mockEvent = {
           features: [
             {
               geometry: { coordinates: coordinates },
-              properties: { city: city },
+              properties: { name: name },
             },
           ],
           lngLat: { lng: coordinates[0], lat: coordinates[1] }, // Set the lngLat property of the mock event
@@ -311,7 +427,7 @@ window.Webflow.push(() => {
     const geocoder = new MapboxGeocoder({
       accessToken: mapboxgl.accessToken, // Set the access token for Mapbox
       mapboxgl: mapboxgl, // Reference to the Mapbox GL JS library
-      placeholder: "Type your address" // Set the placeholder text for the search box
+      placeholder: "Type your address", // Set the placeholder text for the search box
     });
 
     // Add the geocoder control to the map
@@ -323,14 +439,22 @@ window.Webflow.push(() => {
     // Event listener that fires when a search result occurs
     geocoder.on("result", (event) => {
       // Extract the geometry of the search result (coordinates)
-      const searchResult = event.result.geometry;
+      console.log(event);
+      currentSearchResult = event.result.geometry;
+      currentSearchName = event.result.place_name;
 
       // Calculate distances from the search result to each location and update the DOM
       // This function returns the sorted list of locations based on their distance to the search result
-      const sortedLocations = calculateDistancesAndUpdateDOM(searchResult);
+      const sortedLocations = calculateDistancesAndUpdateDOM();
 
       // Highlight the closest location from the sorted list and add a popup
       highlightClosestLocationAndAddPopup(sortedLocations);
+    });
+
+    // Event listener that fires when a search result is cleared
+    geocoder.on("clear", (event) => {
+      console.log("cleared");
+      clearDistancesAndUpdateDOM();
     });
 
     //////////////////////////////////////////////////////////////
@@ -358,13 +482,15 @@ window.Webflow.push(() => {
 
       // Extract the user's current coordinates (longitude and latitude) from the event object
       const geolocateResult = [event.coords.longitude, event.coords.latitude];
+      currentSearchResult = {
+        type: "Point", // Specify the GeoJSON type as Point
+        coordinates: geolocateResult, // Set the coordinates to the user's current location
+      };
+      currentSearchName = "Current Location";
 
       // Calculate distances from the user's current location to each listed location and update the DOM
       // This function returns the sorted list of locations based on their distance to the user's current location
-      const sortedLocations = calculateDistancesAndUpdateDOM({
-        type: "Point", // Specify the GeoJSON type as Point
-        coordinates: geolocateResult, // Set the coordinates to the user's current location
-      });
+      const sortedLocations = calculateDistancesAndUpdateDOM();
 
       // Highlight the closest location from the sorted list and add a popup
       highlightClosestLocationAndAddPopup(sortedLocations);
@@ -377,6 +503,7 @@ window.Webflow.push(() => {
   // Popup options
   const popupOptions = {
     closeOnClick: false,
+    focusAfterOpen: false,
   };
 
   //////////////////////////////////////////////////////////////
@@ -400,7 +527,7 @@ window.Webflow.push(() => {
     const coordinates = e.features[0].geometry.coordinates.slice();
 
     // Extract the city of the clicked feature for the popup content
-    const city = e.features[0].properties.city;
+    const name = e.features[0].properties.name;
 
     // Adjust coordinates if the map is zoomed out and the popup appears on a different copy of the feature
     // This ensures the popup appears on the correct side of the map
@@ -411,10 +538,10 @@ window.Webflow.push(() => {
     // Check if there is already a popup on the map and if so, remove it to avoid multiple popups
     if (popUps[0]) popUps[0].remove();
 
-    // Create and display the popup at the coordinates with the city
+    // Create and display the popup at the coordinates with the name
     const popup = new mapboxgl.Popup(popupOptions)
       .setLngLat(coordinates) // Set the longitude and latitude for the popup
-      .setHTML(city) // Set the HTML content of the popup
+      .setHTML(name) // Set the HTML content of the popup
       .addTo(map); // Add the popup to the map
 
     // Add event listener to close card items when popup is closed
@@ -483,6 +610,7 @@ window.Webflow.push(() => {
       zoom: 14, // Set the zoom level to 14 for a closer view
       speed: 1, // Set the animation speed (1 is default, higher is faster)
       curve: 1, // Set the animation curve (1 is default, higher is more curved)
+      duration: 3000,
       easing(t) {
         return t; // Set the easing function for the animation (t is the current time)
       },
@@ -493,7 +621,7 @@ window.Webflow.push(() => {
   //////////////////// EVENT LISTENERS /////////////////////////
 
   // Listens for clicks on the location layer of the map (dots on the map)
-  map.on("click", "locations", (e) => {
+  map.on("click", "location-dots", (e) => {
     // Get the location ID from the clicked feature's properties
     const locationID = e.features[0].properties.id;
 
@@ -516,12 +644,12 @@ window.Webflow.push(() => {
   });
 
   // Changes cursor style when cursor moves onto the map layer "locations" (REMEMBER: Locations has the dots so when you hover over a dot, the cursor changes)
-  map.on("mouseenter", "locations", () => {
+  map.on("mouseenter", "location-dots", () => {
     map.getCanvas().style.cursor = "pointer";
   });
 
   // Reverses cursor style when cursor moves off the map layer "locations" (REMEMBER: Locations has the dots so when you hover off a dot, the cursor changes)
-  map.on("mouseleave", "locations", () => {
+  map.on("mouseleave", "location-dots", () => {
     map.getCanvas().style.cursor = "";
   });
 
@@ -546,36 +674,37 @@ window.Webflow.push(() => {
 
       // Check if the screen width is 767px or below (mobile view)
       if (window.innerWidth <= 767) {
-        // Scroll to the section with ID 'section-map' to ensure the map is visible on mobile view
-        document.getElementById("section-map").scrollIntoView({
+        // Scroll to the section with ID 'map-component' to ensure the map is visible on mobile view
+        document.getElementById("map-component").scrollIntoView({
           behavior: "smooth",
         });
       }
 
       // Find the feature in the GeoJSON data that matches the location ID
-      const feature = stores.features.find(
+      const feature = dots.features.find(
         (feature) => feature.properties.id === locationID
       );
 
       // If the feature is found in the GeoJSON data
       if (feature) {
-        // Get the coordinates and city of the feature
+        // Get the coordinates and name of the feature
         const coordinates = feature.geometry.coordinates;
-        const city = feature.properties.city;
+        const name = feature.properties.name;
 
         // Create a mock event object to pass to the addPopup function
         const mockEvent = {
           features: [
             {
               geometry: { coordinates: coordinates },
-              properties: { city: city },
+              properties: { name: name },
             },
           ],
           lngLat: { lng: coordinates[0], lat: coordinates[1] },
         };
 
         // Add a popup at the feature's location
-        //addPopup(mockEvent); This function is currently causing a bug - The screen is jumping around. It has to do with the close button on the popup being focused automatically. Will seek a solution and update, but for now, leave this commented out.
+        // This function is currently causing a bug - The screen is jumping around. It has to do with the close button on the popup being focused automatically. Will seek a solution and update, but for now, leave this commented out.
+        addPopup(mockEvent);
 
         // Update the active location in the sidebar
         updateActiveLocation(locationID);
@@ -591,4 +720,97 @@ window.Webflow.push(() => {
       }
     });
   });
+
+  // Add event listeners to the tag filter checkboxes
+  tagFilterItem.forEach((filter) => {
+    // Add a click event listener to each sidebar location item
+    filter.addEventListener("change", (e) => {
+      isChecked = !e.currentTarget.previousElementSibling.classList.contains(
+        "w--redirected-checked"
+      );
+
+      filterLocations(filter.parentElement.id, isChecked);
+    });
+  });
+
+  // Filter sidebar locations based on matching tags & update map dots
+  const filterLocations = (filteredTagId, doAdd) => {
+    if (doAdd) {
+      filteredTagIds.push(filteredTagId);
+    } else {
+      const index = filteredTagIds.indexOf(filteredTagId);
+      if (index > -1) {
+        filteredTagIds.splice(index, 1);
+      }
+    }
+
+    filteredLocations = locationItemSidebar;
+
+    if (filteredTagIds.length > 0) {
+      // Locations that match at least 1 tag
+      filteredLocations = Array.from(locationItemSidebar).filter((location) => {
+        let doesMatch = false;
+
+        filteredTagIds.forEach((tagId) => {
+          if (!doesMatch)
+            doesMatch =
+              $(location).find("[location-tag]#" + tagId).length !== 0;
+        });
+
+        return doesMatch;
+      });
+    }
+
+    let updatedDots = {
+      type: "FeatureCollection",
+      features: [],
+    };
+
+    // Select the parent element with the attribute location-list-sidebar and remove all existing children
+    const parentSidebarElement = document.querySelector(
+      "[location-list-sidebar]"
+    );
+    while (parentSidebarElement.firstChild) {
+      parentSidebarElement.removeChild(parentSidebarElement.firstChild);
+    }
+
+    // Re-add the HTML elements based on the filtered list
+    // Filter the features based on the matching name
+    filteredLocations.forEach((location) => {
+      parentSidebarElement.appendChild(location);
+
+      let name = location
+        .querySelector("[location-name-sidebar]")
+        .textContent.trim();
+
+      updatedDots.features.push(
+        dots.features.find((feature) => {
+          return feature.properties.name.toLowerCase() === name.toLowerCase();
+        })
+      );
+    });
+
+    updateFilterCount();
+    updateResultCount();
+
+    console.log(dots);
+    console.log(updatedDots);
+
+    // Update map dots & recalulate distance + resort if theres a current search
+    if (map.getSource("locations")) {
+      map.getSource("locations").setData(updatedDots);
+      console.log("Updated.");
+
+      if (currentSearchResult) {
+        // Calculate distances from the search result to each location and update the DOM
+        // This function returns the sorted list of locations based on their distance to the search result
+        const sortedLocations = calculateDistancesAndUpdateDOM();
+
+        // Highlight the closest location from the sorted list and add a popup
+        highlightClosestLocationAndAddPopup(sortedLocations);
+      }
+    } else {
+      console.error("Source 'locations' not found.");
+    }
+  };
 });
